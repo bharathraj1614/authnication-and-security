@@ -4,7 +4,10 @@ const ejs = require('ejs');
 const bodyParser = require('body-parser');
 const mongoose = require('mongoose');
 // const encrypt = require('mongoose-encryption');
-const md5 = require('md5');
+// const md5 = require('md5');
+const bcrypt = require('bcrypt');
+const saltRounds = 10;
+
 
 const app = express();
 
@@ -20,7 +23,7 @@ const userSchema = new mongoose.Schema({
 });
 
 
-// userSchema.plugin(encrypt,{secret:process.env.SECRET, encryptedFields:['password']}); this has been commented out bcoz we have use harse function to encrypt the password instead of moongose-encryption
+// userSchema.plugin(encrypt,{secret:process.env.SECRET, encryptedFields:['password']}); this has been commented out bcoz we have use harse function to encrypt the password instead of moongose-encryption level1 security using moongose-encryption
 
 const user = mongoose.model('user', userSchema);
 
@@ -42,19 +45,24 @@ app.get('/register',function (req,res) {
 
 
 app.post('/register',function (req,res) {
-    
-    const newUser = new user({
-        email: req.body.username,
-        password: md5(req.body.password)
-    });
 
-    newUser.save(function (err) {
+    bcrypt.hash(req.body.password,saltRounds,function (err,harsh) {
         
-        if (!err) {
-            res.render('secrets.ejs');
-        }else{
-            console.log(err);
-        }
+        const newUser = new user({
+            email: req.body.username,
+            password: harsh
+            // password: md5(req.body.password)
+        });
+    
+        newUser.save(function (err) {
+            
+            if (!err) {
+                res.render('secrets.ejs');
+            }else{
+                console.log(err);
+            }
+    
+        }); 
 
     });
 
@@ -63,16 +71,22 @@ app.post('/register',function (req,res) {
 app.post('/login', function (req,res) {
     
     const email= req.body.username;
-    const password= md5(req.body.password);
+    const password= req.body.password;
 
     user.findOne({email: email},function (err, foundRecords) {
 
         if(err){
             console.log(err);
         }else{
-            if (foundRecords.password==password) {
+
+            bcrypt.compare(password,foundRecords.password,function (err, result) {
+                
+            if (result===true) {
                 res.render('secrets.ejs')
             }
+
+            });
+
         }
         
     });
