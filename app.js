@@ -63,7 +63,7 @@ app.get('/register',function (req,res) {
 
 app.get('/secrets',function (req, res) {
 
-    if (req.isAuthenticated) {
+    if (req.isAuthenticated()) {
         res.render('secrets.ejs');
     }else{
         res.redirect('/login');
