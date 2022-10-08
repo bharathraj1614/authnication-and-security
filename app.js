@@ -10,6 +10,8 @@ const mongoose = require('mongoose');
 const session = require('express-session');
 const passport = require('passport');
 const passportLocalMoongose = require('passport-local-mongoose');
+const GoogleStrategy = require('passport-google-oauth20').Strategy;
+const findOrCreate = require('mongoose-findorcreate');
 
 
 const app = express();
@@ -31,10 +33,13 @@ mongoose.connect('mongodb://localhost:27017/userDB');
 
 const userSchema = new mongoose.Schema({
     username: String,
-    password: String
+    password: String,
+    googleId: String,
+    secret: String
 });
 
 userSchema.plugin(passportLocalMoongose);
+userSchema.plugin(findOrCreate);
 
 // userSchema.plugin(encrypt,{secret:process.env.SECRET, encryptedFields:['password']}); this has been commented out bcoz we have use harse function to encrypt the password instead of moongose-encryption level1 security using moongose-encryption
 
@@ -42,8 +47,30 @@ const user = mongoose.model('user', userSchema);
 
 passport.use(user.createStrategy());
 
-passport.serializeUser(user.serializeUser());
-passport.deserializeUser(user.deserializeUser()); 
+passport.serializeUser(function(user, done) {
+    done(null, user.id);
+  });
+  
+  passport.deserializeUser(function(id, done) {
+    user.findById(id, function(err, user) {
+      done(err, user);
+    });
+  });
+
+passport.use(new GoogleStrategy({
+    clientID: process.env.CLIENT_ID,
+    clientSecret: process.env.CLIENT_SECRET,
+    callbackURL: "http://localhost:3000/auth/google/secrets",
+    // userProfileURL: "https://www.googleapis.com/oauth2/v3/userinfo"
+
+  },
+  function(accessToken, refreshToken, profile, cb) {
+    console.log(profile);
+    user.findOrCreate({ googleId: profile.id }, function (err, user) {
+      return cb(err, user);
+    });
+  }
+));
 
 
 app.get('/',function (req,res) {
@@ -61,10 +88,26 @@ app.get('/register',function (req,res) {
     res.render('register.ejs');
 });
 
+app.get('/auth/google',
+  passport.authenticate('google', { scope: ['profile'] }));
+
+app.get('/auth/google/secrets', 
+passport.authenticate('google', { failureRedirect: '/login' }),
+function(req, res) {
+// Successful authentication, redirect home.
+    res.redirect('/secrets');
+});
+
 app.get('/secrets',function (req, res) {
 
     if (req.isAuthenticated()) {
-        res.render('secrets.ejs');
+        user.find({secret:{$ne:null}}, function (err,foundSecret) {
+            if (err) {
+                console.log(err);
+            } else {
+                res.render('secrets',{foundUsersWithSecrets: foundSecret});     
+            }
+        });
     }else{
         res.redirect('/login');
     }
@@ -79,6 +122,15 @@ app.get('/logout', function (req, res) {
     res.redirect('/');
 
 });
+
+app.get('/submit', function (req, res) {
+    
+    if(req.isAuthenticated()){
+        res.render('submit');
+    }else{
+        res.redirect('/');
+    }
+})
 
 app.post('/register',function (req,res) {
 
@@ -108,7 +160,7 @@ app.post('/login', function (req,res) {
         if (err) {
             console.log(err);
             res.redirect('/login')
-        } else {
+        } else { 
 
             passport.authenticate('local')(req,res, function () {
                 res.redirect('/secrets');
@@ -117,10 +169,20 @@ app.post('/login', function (req,res) {
         }
         
     });
-
 });
 
-
+app.post('/submit', function (req, res) {
+    console.log(req.user.id);
+    user.findById(req.user.id, function (err,record) {
+        if(err){
+            console.log(err);
+        }else{
+        record.secret=req.body.secret;
+        record.save();
+        }
+    });
+    res.redirect('/secrets')
+});
 
 
 
